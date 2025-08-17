@@ -7,6 +7,7 @@ import eventRoutes from "./routes/eventRoutes.js";
 import ticketRoutes from "./routes/ticketRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import verificationRoutes from "./routes/verificationRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import { errorHandler, notFound } from "./middlewares/errorHandler.js";
 
 dotenv.config();
@@ -34,6 +35,7 @@ app.use("/api/events", eventRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/verification", verificationRoutes);
+app.use("/api/admin", adminRoutes);
 
 // 404 handler for undefined routes
 app.use(notFound);
@@ -46,4 +48,12 @@ app.listen(PORT, () => {
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
   console.log(`🔐 Verification API: http://localhost:${PORT}/api/verification`);
+  console.log(`👑 Admin API: http://localhost:${PORT}/api/admin`);
+  console.log(`📈 Available API endpoints:`);
+  console.log(`   - Auth: /api/auth`);
+  console.log(`   - Events: /api/events`);
+  console.log(`   - Tickets: /api/tickets`);
+  console.log(`   - Payments: /api/payments`);
+  console.log(`   - Verification: /api/verification`);
+  console.log(`   - Admin: /api/admin`);
 });
