@@ -1,6 +1,7 @@
 import Ticket from "../models/Ticket.js";
 import Event from "../models/Event.js";
 import { asyncHandler } from "../middlewares/errorHandler.js";
+import { ticketGenerator } from "../utils/ticketGenerator.js";
 
 // @desc    Book tickets for an event
 // @route   POST /api/tickets/book
@@ -82,6 +83,13 @@ export const bookTickets = asyncHandler(async (req, res) => {
       currency: event.currency,
       eventDate: event.date
     }], { session });
+
+    // Generate QR code for the ticket
+    const qrCodeResult = await ticketGenerator.generateQRCode(ticket[0]);
+    if (qrCodeResult.success) {
+      ticket[0].qrCode = qrCodeResult.dataURL;
+      await ticket[0].save({ session });
+    }
 
     // Reduce available tickets
     event.availableTickets -= quantity;
@@ -391,20 +399,172 @@ export const generateTicketQR = asyncHandler(async (req, res) => {
     });
   }
 
-  // For now, return ticket number as QR code
-  // In production, you'd generate an actual QR code image
-  const qrData = {
-    ticketNumber: ticket.ticketNumber,
-    eventId: ticket.eventId,
-    userId: ticket.userId,
-    timestamp: Date.now()
-  };
+  // Generate QR code
+  const qrResult = await ticketGenerator.generateQRCode(ticket);
+  
+  if (qrResult.success) {
+    res.json({
+      success: true,
+      data: {
+        qrCode: qrResult.dataURL,
+        ticketNumber: ticket.ticketNumber
+      }
+    });
+  } else {
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate QR code"
+    });
+  }
+});
 
-  res.json({
-    success: true,
-    data: {
-      qrCode: Buffer.from(JSON.stringify(qrData)).toString('base64'),
-      ticketNumber: ticket.ticketNumber
+// @desc    Generate PDF ticket
+// @route   GET /api/tickets/:id/pdf
+// @access  Private
+export const generatePDFTicket = asyncHandler(async (req, res) => {
+  const ticket = await Ticket.findById(req.params.id)
+    .populate("eventId", "title date venue startTime endTime currency")
+    .populate("userId", "name email");
+
+  if (!ticket) {
+    return res.status(404).json({
+      success: false,
+      message: "Ticket not found"
+    });
+  }
+
+  // Check if user owns the ticket or is admin/organizer
+  if (ticket.userId._id.toString() !== req.user.id && 
+      req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Not authorized to view this ticket"
+    });
+  }
+
+  try {
+    // Generate PDF ticket
+    const pdfBuffer = await ticketGenerator.generatePDFTicket(
+      ticket,
+      ticket.eventId,
+      ticket.userId
+    );
+
+    // Set response headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ticket-${ticket.ticketNumber}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    res.send(pdfBuffer);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate PDF ticket",
+      error: error.message
+    });
+  }
+});
+
+// @desc    Generate HTML ticket
+// @route   GET /api/tickets/:id/html
+// @access  Private
+export const generateHTMLTicket = asyncHandler(async (req, res) => {
+  const ticket = await Ticket.findById(req.params.id)
+    .populate("eventId", "title date venue startTime endTime currency")
+    .populate("userId", "name email");
+
+  if (!ticket) {
+    return res.status(404).json({
+      success: false,
+      message: "Ticket not found"
+    });
+  }
+
+  // Check if user owns the ticket or is admin/organizer
+  if (ticket.userId._id.toString() !== req.user.id && 
+      req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Not authorized to view this ticket"
+    });
+  }
+
+  try {
+    // Generate HTML ticket
+    const htmlTicket = ticketGenerator.generateHTMLTicket(
+      ticket,
+      ticket.eventId,
+      ticket.userId
+    );
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlTicket);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate HTML ticket",
+      error: error.message
+    });
+  }
+});
+
+// @desc    Regenerate QR code for ticket
+// @route   POST /api/tickets/:id/regenerate-qr
+// @access  Private (Admin/Organizer)
+export const regenerateTicketQR = asyncHandler(async (req, res) => {
+  const ticket = await Ticket.findById(req.params.id);
+  
+  if (!ticket) {
+    return res.status(404).json({
+      success: false,
+      message: "Ticket not found"
+    });
+  }
+
+  // Check if user is admin or organizer of the event
+  const event = await Event.findById(ticket.eventId);
+  if (!event) {
+    return res.status(404).json({
+      success: false,
+      message: "Event not found"
+    });
+  }
+
+  if (event.organizerId.toString() !== req.user.id && req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Not authorized to regenerate QR code for this ticket"
+    });
+  }
+
+  try {
+    // Generate new QR code
+    const qrResult = await ticketGenerator.generateQRCode(ticket);
+    
+    if (qrResult.success) {
+      // Update ticket with new QR code
+      ticket.qrCode = qrResult.dataURL;
+      await ticket.save();
+
+      res.json({
+        success: true,
+        message: "QR code regenerated successfully",
+        data: {
+          qrCode: qrResult.dataURL,
+          ticketNumber: ticket.ticketNumber
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to regenerate QR code"
+      });
     }
-  });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to regenerate QR code",
+      error: error.message
+    });
+  }
 });
