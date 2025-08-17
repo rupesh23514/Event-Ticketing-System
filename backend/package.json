@@ -13,6 +13,8 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.18.0",
-    "mongoose": "^8.5.2"
+    "mongoose": "^8.5.2",
+    "pdfkit": "^0.17.1",
+    "qrcode": "^1.5.4"
   }
 }
